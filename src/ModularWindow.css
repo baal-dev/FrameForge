@@ -319,3 +319,20 @@
   min-width: 60px !important;
   font-variant-numeric: tabular-nums;
 }
+
+/* Farm Sets section (pinned Prime sets) */
+.modular-farm-list { display: flex; flex-direction: column; gap: 6px; padding: 2px 0; }
+.modular-farm-item { border: 1px solid var(--border); border-radius: 6px; background: var(--bg); padding: 6px 8px; display: flex; flex-direction: column; gap: 5px; }
+.modular-farm-item.done { border-color: rgba(63, 185, 80, 0.5); }
+.modular-farm-top { display: flex; align-items: center; gap: 6px; }
+.modular-farm-name { font-size: 12px; font-weight: 600; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modular-farm-pct { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+.modular-farm-percent { font-size: 11px; font-weight: 700; color: var(--text); flex-shrink: 0; }
+.modular-farm-item.done .modular-farm-percent { color: #3fb950; }
+.modular-farm-bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.modular-farm-bar-fill { height: 100%; background: var(--accent); }
+.modular-farm-item.done .modular-farm-bar-fill { background: #3fb950; }
+.modular-farm-parts { display: flex; flex-wrap: wrap; gap: 3px; }
+.modular-farm-part { font-size: 10px; padding: 1px 5px; border-radius: 3px; border: 1px solid transparent; white-space: nowrap; }
+.modular-farm-part.have { background: rgba(63, 185, 80, 0.16); color: #7ee787; border-color: rgba(63, 185, 80, 0.3); }
+.modular-farm-part.missing { background: rgba(255, 255, 255, 0.05); color: var(--muted); border-color: var(--border); }

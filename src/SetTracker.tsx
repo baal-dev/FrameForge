@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { InventoryItem } from "./App";
 import { HelpTip } from "./HelpTip";
+import { shortPartName } from "./warframeSim";
+import { loadPins, togglePin as togglePinStore, onPinsChanged } from "./pins";
 import "./SetTracker.css";
 
 // Set parts come from the relic drop tables (same source RelicHelper uses): every
@@ -42,12 +44,8 @@ export default function SetTracker({ inventory }: Props) {
   const [hideComplete, setHideComplete] = useState(false);
   const [onlyStarted, setOnlyStarted] = useState(false);
   const [sort, setSort] = useState<SortMode>("closest");
-  const [pinned, setPinned] = useState<string[]>(() => {
-    try { const s = localStorage.getItem("ff-pinned-sets"); return s ? JSON.parse(s) : []; } catch { return []; }
-  });
-  useEffect(() => { try { localStorage.setItem("ff-pinned-sets", JSON.stringify(pinned)); } catch { /* ignore */ } }, [pinned]);
-  const togglePin = (name: string) =>
-    setPinned(p => (p.includes(name) ? p.filter(x => x !== name) : [...p, name]));
+  const [pinned, setPinned] = useState<string[]>(loadPins);
+  useEffect(() => onPinsChanged(() => setPinned(loadPins())), []);
 
   useEffect(() => {
     invoke<{ unique_name: string; name: string }[]>("get_all_items").then(setCatalog).catch(() => {});
@@ -90,7 +88,7 @@ export default function SetTracker({ inventory }: Props) {
     for (const [set, partNames] of sets) {
       const parts = [...partNames].map(name => ({
         name,
-        short: shortPart(name),
+        short: shortPartName(name),
         owned: ownedOf(name),
       }));
       parts.sort((a, b) => a.short.localeCompare(b.short));
@@ -123,36 +121,8 @@ export default function SetTracker({ inventory }: Props) {
   }, [rows, search, hideComplete, onlyStarted, sort]);
 
   const complete = rows.filter(r => r.pct === 100).length;
-  const pinnedRows = pinned
-    .map(name => rows.find(r => r.name === name))
-    .filter((r): r is SetRow => r !== undefined);
-
   return (
-    <div className="settrk-wrap">
-      {pinnedRows.length > 0 && (
-        <aside className="settrk-pinned">
-          <div className="settrk-pinned-head">📌 Farming ({pinnedRows.length})</div>
-          {pinnedRows.map(row => (
-            <div key={row.key} className={`settrk-pin${row.pct === 100 ? " done" : ""}`}>
-              <div className="settrk-pin-top">
-                <span className="settrk-pin-name" title={row.name}>{row.name}</span>
-                <span className="settrk-pin-pct">{row.pct}%</span>
-                <button className="settrk-pin-x" onClick={() => togglePin(row.name)} title="Unpin">×</button>
-              </div>
-              <div className="settrk-bar"><div className="settrk-bar-fill" style={{ width: `${row.pct}%` }} /></div>
-              <div className="settrk-parts">
-                {row.parts.map((p, i) => (
-                  <span key={i} className={`settrk-part ${p.owned > 0 ? "have" : "missing"}`}
-                    title={`${p.name} — ${p.owned > 0 ? `owned ×${p.owned}` : "missing"}`}>
-                    {p.short}{p.owned > 1 ? ` ×${p.owned}` : ""}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ))}
-        </aside>
-      )}
-      <div className="settrk">
+    <div className="settrk">
       <div className="settrk-toolbar">
         <input
           className="settrk-search"
@@ -189,8 +159,8 @@ export default function SetTracker({ inventory }: Props) {
                   <span className="settrk-sub">{row.built ? "Built ✓" : `${row.ownedParts}/${row.totalParts} parts`}</span>
                 </div>
                 <button className={`settrk-pinbtn${pinned.includes(row.name) ? " on" : ""}`}
-                  onClick={() => togglePin(row.name)}
-                  title={pinned.includes(row.name) ? "Unpin from side" : "Pin to side"}>📌</button>
+                  onClick={() => togglePinStore(row.name)}
+                  title={pinned.includes(row.name) ? "Unpin from Modular Window" : "Pin to Modular Window"}>📌</button>
                 <span className="settrk-pct">{row.pct}%</span>
               </div>
               <div className="settrk-bar"><div className="settrk-bar-fill" style={{ width: `${row.pct}%` }} /></div>
@@ -209,13 +179,6 @@ export default function SetTracker({ inventory }: Props) {
           ))}
         </div>
       )}
-      </div>
     </div>
   );
-}
-
-/** "Banshee Prime Chassis Blueprint" → "Chassis"; "Banshee Prime Blueprint" → "Blueprint". */
-function shortPart(name: string): string {
-  const slot = name.match(/(Neuroptics|Chassis|Systems|Barrel|Receiver|Stock|Blade|Handle|Link|Grip|String|Ornament|Gauntlet|Wings|Harness|Boot|Head|Pouch|Upper Limb|Lower Limb|Limb|Guard|Disc|Carapace|Cerebrum|Chain|Band|Buckle|Collar|Blueprint)/i);
-  return slot ? slot[1] : name.replace(/\bPrime\b/gi, "").trim();
 }

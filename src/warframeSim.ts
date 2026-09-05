@@ -56,6 +56,12 @@ export function setNameOf(part: string): string | null {
   return part.slice(0, i + 6);
 }
 
+/** "Banshee Prime Chassis Blueprint" → "Chassis"; "Banshee Prime Blueprint" → "Blueprint". */
+export function shortPartName(name: string): string {
+  const slot = name.match(/(Neuroptics|Chassis|Systems|Barrel|Receiver|Stock|Blade|Handle|Link|Grip|String|Ornament|Gauntlet|Wings|Harness|Boot|Head|Pouch|Upper Limb|Lower Limb|Limb|Guard|Disc|Carapace|Cerebrum|Chain|Band|Buckle|Collar|Blueprint)/i);
+  return slot ? slot[1] : name.replace(/\bPrime\b/gi, "").trim();
+}
+
 // ── Deterministic RNG (so a fixed seed reproduces results, like C# new Random(1)) ─
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;

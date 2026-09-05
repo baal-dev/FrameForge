@@ -4,6 +4,8 @@ import "./ModularWindow.css";
 import { TIMER_LABELS, getTimerInfo, fmtMs, FissureWatch, matchesWatch, WsFissure, WsStorm } from "./TimerHelper";
 import type { InventoryItem } from "./App";
 import { useWorldState } from "./worldstate";
+import { setNameOf, shortPartName } from "./warframeSim";
+import { loadPins, togglePin as togglePinStore, onPinsChanged } from "./pins";
 
 interface CatalogItem {
   unique_name: string;
@@ -98,6 +100,46 @@ export default function ModularWindow({
   const [trackedRecipes, setTrackedRecipes] = useState<Map<string, RecipeComponent[]>>(new Map());
   const [trackingView, setTrackingView] = useState<"need" | "all">("need");
   const [collapsedReqs, setCollapsedReqs] = useState<Set<string>>(new Set());
+
+  // ── Pinned farm sets (shared via localStorage with the Prime Sets tab) ──────
+  const [pins, setPins] = useState<string[]>(loadPins);
+  useEffect(() => onPinsChanged(() => setPins(loadPins())), []);
+  const [dropRelics, setDropRelics] = useState<any[]>([]);
+  useEffect(() => {
+    invoke<any>("get_drop_data")
+      .then(d => setDropRelics(Array.isArray(d?.relics) ? d.relics : []))
+      .catch(() => {});
+  }, []);
+  // Ensure the Farm Sets section exists in the (persisted) order once.
+  useEffect(() => {
+    if (!sectionOrder.includes("farmsets")) onSectionOrderChange([...sectionOrder, "farmsets"]);
+  }, [sectionOrder, onSectionOrderChange]);
+
+  const setParts = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const r of dropRelics)
+      for (const rw of (r?.rewards ?? [])) {
+        const part = rw.itemName ?? rw.item_name ?? rw.name;
+        if (!part) continue;
+        const set = setNameOf(part);
+        if (!set) continue;
+        if (!m.has(set)) m.set(set, new Set());
+        m.get(set)!.add(part);
+      }
+    return m;
+  }, [dropRelics]);
+
+  const nameToUq = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of catalog) if (c.name) m.set(c.name.toLowerCase(), c.unique_name);
+    return m;
+  }, [catalog]);
+
+  const ownedQty = useCallback((part: string): number => {
+    const uq = nameToUq.get(part.toLowerCase());
+    const it: InventoryItem | undefined = (uq ? inventory[uq] : undefined) ?? inventory[part];
+    return it?.quantity ?? 0;
+  }, [nameToUq, inventory]);
   const { worldState } = useWorldState();
   const [timerNow, setTimerNow] = useState(Date.now());
 
@@ -393,7 +435,45 @@ export default function ModularWindow({
     )
   );
 
+  const farmsetsBody = pins.length === 0 ? (
+    <div className="modular-empty">Pin sets in Completionist → Prime Sets (📌) to track them here.</div>
+  ) : (
+    <div className="modular-farm-list">
+      {pins.map(set => {
+        const partNames = [...(setParts.get(set) ?? [])].sort((a, b) => shortPartName(a).localeCompare(shortPartName(b)));
+        const rootUq = nameToUq.get(set.toLowerCase());
+        const root: InventoryItem | undefined = (rootUq ? inventory[rootUq] : undefined) ?? inventory[set];
+        const built = (root?.quantity ?? 0) > 0 || (root?.mastery_rank ?? 0) > 0;
+        const owned = built ? partNames.length : partNames.filter(p => ownedQty(p) > 0).length;
+        const total = partNames.length;
+        const pct = built ? 100 : total > 0 ? Math.round((owned / total) * 100) : 0;
+        return (
+          <div key={set} className={`modular-farm-item${pct === 100 ? " done" : ""}`}>
+            <div className="modular-farm-top">
+              <span className="modular-farm-name" title={set}>{set}</span>
+              <span className="modular-farm-pct">{built ? "Built" : `${owned}/${total}`}</span>
+              <span className="modular-farm-percent">{pct}%</span>
+              <button className="modular-fav-star" title="Unpin" onClick={() => togglePinStore(set)}>★</button>
+            </div>
+            <div className="modular-farm-bar"><div className="modular-farm-bar-fill" style={{ width: `${pct}%` }} /></div>
+            <div className="modular-farm-parts">
+              {partNames.map((p, i) => (
+                <span key={i} className={`modular-farm-part ${ownedQty(p) > 0 ? "have" : "missing"}`} title={p}>
+                  {shortPartName(p)}
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   const sectionData: Record<string, { label: string; body: React.ReactElement; headerExtra?: React.ReactElement }> = {
+    farmsets: {
+      label: `Farm Sets${pins.length > 0 ? ` (${pins.length})` : ""}`,
+      body: farmsetsBody,
+    },
     tracking: {
       label: `Tracking${tracked.length > 0 ? ` (${tracked.length})` : ""}`,
       body: trackingBody,
