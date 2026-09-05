@@ -1,0 +1,59 @@
+.wfs { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: auto; padding: 12px; gap: 12px; }
+
+/* two-pane layout for the farm calculator */
+.wfs-split { flex-direction: row; align-items: stretch; overflow: hidden; }
+.wfs-sets { width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.wfs-setlist { flex: 1; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
+.wfs-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+
+.wfs-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.wfs-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--text-dim); }
+.wfs-grow { flex: 1 1 240px; }
+.wfs-input {
+  padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--text); font-size: 13px;
+}
+.wfs-narrow { width: 90px; }
+.wfs-mini { width: 100%; padding: 3px 6px; font-size: 12px; }
+
+.wfs-check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; padding: 2px 0; }
+.wfs-check input { cursor: pointer; }
+.wfs-inline { align-self: flex-end; }
+
+.wfs-empty { padding: 30px; text-align: center; color: var(--text-dim); }
+.wfs-summary { color: var(--text); background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+.wfs-subhead { font-weight: 600; color: var(--text); margin-top: 4px; }
+
+.wfs-totals { display: flex; flex-wrap: wrap; gap: 24px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+.wfs-stat { display: flex; flex-direction: column; gap: 2px; }
+.wfs-stat span { font-size: 11px; color: var(--text-dim); }
+.wfs-stat b { font-size: 20px; font-weight: 700; color: var(--text); }
+.wfs-stat small { font-size: 11px; color: var(--text-dim); }
+.green { color: #3fb950 !important; }
+.cyan { color: #56b6c2 !important; }
+
+.wfs-table { display: flex; flex-direction: column; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.wfs-row { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--border); }
+.wfs-row:last-child { border-bottom: none; }
+.wfs-head { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .03em; }
+.wfs-dumped { opacity: 0.55; }
+
+.wfs-c-img { width: 30px; flex-shrink: 0; }
+.wfs-c-img img { width: 28px; height: 28px; object-fit: contain; }
+.wfs-c-name { flex: 1; min-width: 0; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wfs-c-set { width: 130px; flex-shrink: 0; font-size: 12px; color: var(--text-dim); }
+.wfs-c-rar { width: 80px; flex-shrink: 0; font-size: 12px; }
+.wfs-c-num { width: 74px; flex-shrink: 0; text-align: right; font-size: 13px; color: var(--text); }
+.wfs-c-sel { width: 120px; flex-shrink: 0; }
+.wfs-c-sel.wfs-wide { width: 200px; }
+.wfs-c-keep { width: 64px; flex-shrink: 0; text-align: right; }
+
+.rar-common { color: #c8a06a; }
+.rar-uncommon { color: #b7c0c9; }
+.rar-rare { color: #e3c341; }
+.wfs-covered { color: var(--text-dim); font-style: italic; }
+
+.wfs-chip { padding: 3px 10px; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; font-size: 12px; }
+.wfs-chip.on { color: #3fb950; border-color: rgba(63,185,80,.4); background: rgba(63,185,80,.12); }
+
+.wfs-note { font-size: 11px; color: var(--text-dim); line-height: 1.5; }

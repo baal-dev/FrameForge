@@ -81,6 +81,8 @@ import Weapons from "./Weapons";
 import Overlay from "./Overlay";
 import ModularWindow from "./ModularWindow";
 import SetTracker from "./SetTracker";
+import RelicSimulator from "./RelicSimulator";
+import FarmCalc from "./FarmCalc";
 import { HelpTip } from "./HelpTip";
 import "./App.css";
 
@@ -836,6 +838,7 @@ const [blobLogEnabled, setBlobLogEnabled] = useState(false);
   const [marketFilters, setMarketFilters] = useState(MARKET_FILTERS_DEFAULT);
   const [relicFilters, setRelicFilters] = useState(RELIC_FILTERS_DEFAULT);
   const [completionistView, setCompletionistView] = useState<"syndicates" | "weapons" | "sets">("syndicates");
+  const [relicView, setRelicView] = useState<"browser" | "simulator" | "farm">("browser");
   const [weaponsTab, setWeaponsTab] = useState<"Primary" | "Secondary" | "Melee" | "Operator">("Primary");
   const [syndicateFilters, setSyndicateFilters] = useState({
     activeGroup: "main" as "main" | "openworld" | "other" | "lab",
@@ -3322,7 +3325,31 @@ if (typeof s.autoDiagEnabled === "boolean") {
         {/* ── Relics module ── */}
         {activeModule === "relics" && (
           <ErrorBoundary>
-            <RelicHelper inventory={inventory} refreshKey={itemsRefreshKey} colorblindMode={colorblindMode} filters={relicFilters} onFiltersChange={setRelicFilters} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0 }}>
+              <div style={{ display: "flex", gap: 2, padding: "8px 12px 0", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+                {(["browser", "simulator", "farm"] as const).map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setRelicView(v)}
+                    style={{
+                      padding: "5px 16px", border: "none", borderRadius: "6px 6px 0 0",
+                      borderBottom: `3px solid ${relicView === v ? "var(--accent, #888)" : "transparent"}`,
+                      background: relicView === v ? "var(--bg-card)" : "transparent",
+                      color: relicView === v ? "var(--text)" : "var(--text-dim)",
+                      cursor: "pointer", fontSize: 13, fontWeight: 500, marginBottom: -1,
+                      transition: "background 0.15s, color 0.15s",
+                    }}
+                  >
+                    {v === "browser" ? "Browser" : v === "simulator" ? "Simulator" : "Farm Calc"}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: relicView === "browser" ? "contents" : "none" }}>
+                <RelicHelper inventory={inventory} refreshKey={itemsRefreshKey} colorblindMode={colorblindMode} filters={relicFilters} onFiltersChange={setRelicFilters} />
+              </div>
+              {relicView === "simulator" && <RelicSimulator />}
+              {relicView === "farm" && <FarmCalc inventory={inventory} />}
+            </div>
           </ErrorBoundary>
         )}
 
