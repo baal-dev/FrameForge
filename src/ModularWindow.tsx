@@ -5,7 +5,7 @@ import { TIMER_LABELS, getTimerInfo, fmtMs, FissureWatch, matchesWatch, WsFissur
 import type { InventoryItem } from "./App";
 import { useWorldState } from "./worldstate";
 import { setNameOf, shortPartName } from "./warframeSim";
-import { loadPins, togglePin as togglePinStore, onPinsChanged } from "./pins";
+import { loadPins, togglePin as togglePinStore, onPinsChanged, loadTargets, setTarget } from "./pins";
 
 interface CatalogItem {
   unique_name: string;
@@ -103,7 +103,8 @@ export default function ModularWindow({
 
   // ── Pinned farm sets (shared via localStorage with the Prime Sets tab) ──────
   const [pins, setPins] = useState<string[]>(loadPins);
-  useEffect(() => onPinsChanged(() => setPins(loadPins())), []);
+  const [pinTargets, setPinTargets] = useState<Record<string, number>>(loadTargets);
+  useEffect(() => onPinsChanged(() => { setPins(loadPins()); setPinTargets(loadTargets()); }), []);
   const [dropRelics, setDropRelics] = useState<any[]>([]);
   useEffect(() => {
     invoke<any>("get_drop_data")
@@ -440,28 +441,36 @@ export default function ModularWindow({
   ) : (
     <div className="modular-farm-list">
       {pins.map(set => {
+        const target = Math.max(1, pinTargets[set] ?? 1);
         const partNames = [...(setParts.get(set) ?? [])].sort((a, b) => shortPartName(a).localeCompare(shortPartName(b)));
         const rootUq = nameToUq.get(set.toLowerCase());
         const root: InventoryItem | undefined = (rootUq ? inventory[rootUq] : undefined) ?? inventory[set];
         const built = (root?.quantity ?? 0) > 0 || (root?.mastery_rank ?? 0) > 0;
-        const owned = built ? partNames.length : partNames.filter(p => ownedQty(p) > 0).length;
+        // Progress toward the target: each part needs `target` copies.
+        const doneParts = built ? partNames.length : partNames.filter(p => ownedQty(p) >= target).length;
         const total = partNames.length;
-        const pct = built ? 100 : total > 0 ? Math.round((owned / total) * 100) : 0;
+        const pct = built ? 100 : total > 0 ? Math.round((doneParts / total) * 100) : 0;
         return (
           <div key={set} className={`modular-farm-item${pct === 100 ? " done" : ""}`}>
             <div className="modular-farm-top">
               <span className="modular-farm-name" title={set}>{set}</span>
-              <span className="modular-farm-pct">{built ? "Built" : `${owned}/${total}`}</span>
+              <span className="modular-farm-pct">{built ? "Built" : `${doneParts}/${total}`}</span>
               <span className="modular-farm-percent">{pct}%</span>
+              <input className="modular-farm-target" type="number" min={1} value={target}
+                title="How many full sets you want"
+                onChange={e => setTarget(set, Math.max(1, parseInt(e.target.value) || 1))} />
               <button className="modular-fav-star" title="Unpin" onClick={() => togglePinStore(set)}>★</button>
             </div>
             <div className="modular-farm-bar"><div className="modular-farm-bar-fill" style={{ width: `${pct}%` }} /></div>
             <div className="modular-farm-parts">
               {partNames.map((p, i) => {
                 const q = ownedQty(p);
+                const need = Math.max(0, target - q);
                 return (
-                  <span key={i} className={`modular-farm-part ${q > 0 ? "have" : "missing"}`} title={p}>
+                  <span key={i} className={`modular-farm-part ${need === 0 ? "have" : "missing"}`}
+                    title={`${p} — have ${q}${need > 0 ? `, need ${need} more` : ""}`}>
                     {shortPartName(p)} <b className="modular-farm-qty">{q}</b>
+                    {need > 0 && <i className="modular-farm-need">−{need}</i>}
                   </span>
                 );
               })}
