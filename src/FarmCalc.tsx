@@ -10,6 +10,7 @@ import "./warframeSim.css";
 const SQUADS: { label: string; n: number }[] = [
   { label: "1b1", n: 1 }, { label: "2b2", n: 2 }, { label: "4b4", n: 4 },
 ];
+const wfmNorm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 
 interface Props {
   inventory: Record<string, InventoryItem>;
@@ -33,7 +34,26 @@ export default function FarmCalc({ inventory }: Props) {
   const [refineOverrides, setRefineOverrides] = useState<Record<string, Refinement>>({});
   const [squadOverrides, setSquadOverrides] = useState<Record<string, number>>({});
 
+  const [prices, setPrices] = useState<Map<string, number>>(new Map());
+
   useEffect(() => { invoke<any>("get_drop_data").then(d => setRelics(parseRelics(d))).catch(() => {}); }, []);
+
+  // warframe.market prices keyed by normalized name (for "<Set> Set" plat value).
+  useEffect(() => {
+    invoke<{ item_name: string; url_name: string }[]>("fetch_wfm_items").then(items => {
+      const lookup = new Map<string, string>();
+      for (const w of items) lookup.set(wfmNorm(w.item_name), w.url_name);
+      invoke<Record<string, number | null>>("wfm_get_cached_prices").then(raw => {
+        const bySlug = new Map<string, number>();
+        for (const [slug, p] of Object.entries(raw)) if (p != null) bySlug.set(slug, p);
+        const byName = new Map<string, number>();
+        for (const [norm, slug] of lookup) { const p = bySlug.get(slug); if (p != null) byName.set(norm, p); }
+        setPrices(byName);
+      }).catch(() => {});
+    }).catch(() => {});
+  }, []);
+
+  const setPriceOf = (setName: string): number => prices.get(wfmNorm(`${setName} Set`)) ?? 0;
 
   const allSets = useMemo(() => {
     const s = new Set<string>();
@@ -90,6 +110,15 @@ export default function FarmCalc({ inventory }: Props) {
 
   const mins = (() => { const v = parseFloat(minutes); return v > 0 ? v : 3.5; })();
   const ceil = (n: number) => Math.ceil(n).toLocaleString();
+
+  // warframe.market sell value of the sets you're farming: set price × its target.
+  const setValueRows = [...chosen].sort().map(s => {
+    const unit = setPriceOf(s);
+    const tgt = targets[s] ?? defaultTarget;
+    return { set: s, unit, tgt, total: unit * tgt };
+  });
+  const grandSetValue = setValueRows.reduce((a, r) => a + r.total, 0);
+  const anySetPrice = setValueRows.some(r => r.unit > 0);
 
   return (
     <div className="wfs wfs-split">
@@ -158,7 +187,39 @@ export default function FarmCalc({ inventory }: Props) {
                 <b>{fmtDuration(plan.totalMissions * mins)}</b>
                 {plan.totalMissionsP90 > 0 && <small>safe {fmtDuration(plan.totalMissionsP90 * mins)}</small>}
               </div>
+              {anySetPrice && (
+                <div className="wfs-stat">
+                  <span>Sell value (all sets)</span>
+                  <b className="green">{Math.round(grandSetValue).toLocaleString()} p</b>
+                  <small>at warframe.market set prices</small>
+                </div>
+              )}
             </div>
+
+            <div className="wfs-subhead">Set value (warframe.market)</div>
+            <div className="wfs-table">
+              <div className="wfs-row wfs-head">
+                <span className="wfs-c-name">Set</span>
+                <span className="wfs-c-num">Set price</span>
+                <span className="wfs-c-num">Sets</span>
+                <span className="wfs-c-num">Total plat</span>
+              </div>
+              {setValueRows.map(r => (
+                <div className="wfs-row" key={r.set}>
+                  <span className="wfs-c-name">{r.set}</span>
+                  <span className="wfs-c-num">{r.unit > 0 ? `${r.unit} p` : "—"}</span>
+                  <span className="wfs-c-num">{r.tgt}</span>
+                  <span className="wfs-c-num green">{r.unit > 0 ? `${Math.round(r.total).toLocaleString()} p` : "—"}</span>
+                </div>
+              ))}
+              <div className="wfs-row">
+                <span className="wfs-c-name"><b>Total</b></span>
+                <span className="wfs-c-num" />
+                <span className="wfs-c-num" />
+                <span className="wfs-c-num green"><b>{Math.round(grandSetValue).toLocaleString()} p</b></span>
+              </div>
+            </div>
+            {!anySetPrice && <div className="wfs-note">Set prices not loaded yet — open the Market tab once so warframe.market prices are cached.</div>}
 
             <div className="wfs-subhead">Relics to farm</div>
             <div className="wfs-table">
