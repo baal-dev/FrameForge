@@ -3049,7 +3049,18 @@ fn start_log_watcher(app: tauri::AppHandle) -> Result<(), String> {
                     std::thread::spawn(move || {
                         // Brief delay for the screen to finish rendering before capture.
                         std::thread::sleep(std::time::Duration::from_millis(400));
-                        let era = crate::ocr::detect_fissure_era();
+                        // Retry: the relic grid can still be fading in, or a fullscreen-
+                        // exclusive DXGI frame can momentarily come back black, so a single
+                        // capture often misses. Try a few times before giving up.
+                        let mut era = None;
+                        for attempt in 0..6 {
+                            if attempt > 0 {
+                                std::thread::sleep(std::time::Duration::from_millis(350));
+                            }
+                            era = crate::ocr::detect_fissure_era();
+                            if era.is_some() { break; }
+                            info!("relic-pick: OCR attempt {} found no era, retrying", attempt + 1);
+                        }
                         info!("relic-pick: OCR result = {:?}", era);
                         if let Some(era) = era {
                             let payload = build_relic_pick_payload(&era, &app_clone);
