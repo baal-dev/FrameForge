@@ -42,6 +42,12 @@ export default function SetTracker({ inventory }: Props) {
   const [hideComplete, setHideComplete] = useState(false);
   const [onlyStarted, setOnlyStarted] = useState(false);
   const [sort, setSort] = useState<SortMode>("closest");
+  const [pinned, setPinned] = useState<string[]>(() => {
+    try { const s = localStorage.getItem("ff-pinned-sets"); return s ? JSON.parse(s) : []; } catch { return []; }
+  });
+  useEffect(() => { try { localStorage.setItem("ff-pinned-sets", JSON.stringify(pinned)); } catch { /* ignore */ } }, [pinned]);
+  const togglePin = (name: string) =>
+    setPinned(p => (p.includes(name) ? p.filter(x => x !== name) : [...p, name]));
 
   useEffect(() => {
     invoke<{ unique_name: string; name: string }[]>("get_all_items").then(setCatalog).catch(() => {});
@@ -117,9 +123,36 @@ export default function SetTracker({ inventory }: Props) {
   }, [rows, search, hideComplete, onlyStarted, sort]);
 
   const complete = rows.filter(r => r.pct === 100).length;
+  const pinnedRows = pinned
+    .map(name => rows.find(r => r.name === name))
+    .filter((r): r is SetRow => r !== undefined);
 
   return (
-    <div className="settrk">
+    <div className="settrk-wrap">
+      {pinnedRows.length > 0 && (
+        <aside className="settrk-pinned">
+          <div className="settrk-pinned-head">📌 Farming ({pinnedRows.length})</div>
+          {pinnedRows.map(row => (
+            <div key={row.key} className={`settrk-pin${row.pct === 100 ? " done" : ""}`}>
+              <div className="settrk-pin-top">
+                <span className="settrk-pin-name" title={row.name}>{row.name}</span>
+                <span className="settrk-pin-pct">{row.pct}%</span>
+                <button className="settrk-pin-x" onClick={() => togglePin(row.name)} title="Unpin">×</button>
+              </div>
+              <div className="settrk-bar"><div className="settrk-bar-fill" style={{ width: `${row.pct}%` }} /></div>
+              <div className="settrk-parts">
+                {row.parts.map((p, i) => (
+                  <span key={i} className={`settrk-part ${p.owned > 0 ? "have" : "missing"}`}
+                    title={`${p.name} — ${p.owned > 0 ? `owned ×${p.owned}` : "missing"}`}>
+                    {p.short}{p.owned > 1 ? ` ×${p.owned}` : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </aside>
+      )}
+      <div className="settrk">
       <div className="settrk-toolbar">
         <input
           className="settrk-search"
@@ -155,6 +188,9 @@ export default function SetTracker({ inventory }: Props) {
                   <span className="settrk-name">{row.name}</span>
                   <span className="settrk-sub">{row.built ? "Built ✓" : `${row.ownedParts}/${row.totalParts} parts`}</span>
                 </div>
+                <button className={`settrk-pinbtn${pinned.includes(row.name) ? " on" : ""}`}
+                  onClick={() => togglePin(row.name)}
+                  title={pinned.includes(row.name) ? "Unpin from side" : "Pin to side"}>📌</button>
                 <span className="settrk-pct">{row.pct}%</span>
               </div>
               <div className="settrk-bar"><div className="settrk-bar-fill" style={{ width: `${row.pct}%` }} /></div>
@@ -173,6 +209,7 @@ export default function SetTracker({ inventory }: Props) {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
