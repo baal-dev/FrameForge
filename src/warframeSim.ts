@@ -186,6 +186,7 @@ export interface CoFarmOptions {
   refinementOverrides?: Record<string, Refinement>; // relic → refinement
   squadOverrides?: Record<string, number>;      // relic → squad n
   ownedParts?: Record<string, number>;          // part → owned count
+  availableRelics?: string[];                   // restrict sources to these relic full names
   trials?: number;
   seed?: number;
 }
@@ -212,6 +213,9 @@ export function coFarmPlan(
   const relicOverrides = opts.relicOverrides ?? {};
   const refinementOverrides = opts.refinementOverrides ?? {};
   const squadOverrides = opts.squadOverrides ?? {};
+  const avail = opts.availableRelics && opts.availableRelics.length > 0
+    ? new Set(opts.availableRelics.map(s => s.toLowerCase()))
+    : null;
 
   const empty: CoFarmPlan = {
     squadSize: n, autoRefinement: opts.autoRefinement, relics: [], parts: [],
@@ -282,10 +286,18 @@ export function coFarmPlan(
   const assignedHit: Record<string, number> = {};
   const assignedRarity: Record<string, Rarity> = {};
   for (const part of parts) {
-    const idxs = relevant
+    let idxs = relevant
       .map((_, ri) => ri)
       .filter(ri => relevant[ri].rewards.some(w => w.itemName === part))
       .sort((a, b) => hitInRelic(part, b) - hitInRelic(part, a));
+
+    // Restrict to the available relics (e.g. the current Resurgence) when asked —
+    // but only if at least one of them drops this part, else fall back so the plan
+    // stays solvable.
+    if (avail) {
+      const availIdxs = idxs.filter(ri => avail.has(relevant[ri].fullName.toLowerCase()));
+      if (availIdxs.length > 0) idxs = availIdxs;
+    }
 
     candidates[part] = idxs.map(ri => ({
       relicName: relevant[ri].fullName,

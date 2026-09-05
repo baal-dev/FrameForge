@@ -3334,8 +3334,8 @@ if (typeof s.autoDiagEnabled === "boolean") {
                     style={{
                       padding: "5px 16px", border: "none", borderRadius: "6px 6px 0 0",
                       borderBottom: `3px solid ${relicView === v ? "var(--accent, #888)" : "transparent"}`,
-                      background: relicView === v ? "var(--bg-card)" : "transparent",
-                      color: relicView === v ? "var(--text)" : "var(--text-dim)",
+                      background: relicView === v ? "var(--surface)" : "transparent",
+                      color: relicView === v ? "var(--text)" : "var(--muted)",
                       cursor: "pointer", fontSize: 13, fontWeight: 500, marginBottom: -1,
                       transition: "background 0.15s, color 0.15s",
                     }}
@@ -3402,8 +3402,8 @@ if (typeof s.autoDiagEnabled === "boolean") {
                       border: "none",
                       borderRadius: "6px 6px 0 0",
                       borderBottom: `3px solid ${completionistView === v ? "var(--accent, #888)" : "transparent"}`,
-                      background: completionistView === v ? "var(--bg-card)" : "transparent",
-                      color: completionistView === v ? "var(--text)" : "var(--text-dim)",
+                      background: completionistView === v ? "var(--surface)" : "transparent",
+                      color: completionistView === v ? "var(--text)" : "var(--muted)",
                       cursor: "pointer",
                       fontSize: 13,
                       fontWeight: 500,

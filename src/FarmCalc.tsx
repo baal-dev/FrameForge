@@ -25,6 +25,8 @@ export default function FarmCalc({ inventory }: Props) {
   const [squad, setSquad] = useState(4);
   const [minutes, setMinutes] = useState("3.5");
   const [subtractOwned, setSubtractOwned] = useState(true);
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const [availableText, setAvailableText] = useState("");
 
   const [relicOverrides, setRelicOverrides] = useState<Record<string, string>>({});
   const [refineOverrides, setRefineOverrides] = useState<Record<string, Refinement>>({});
@@ -55,6 +57,19 @@ export default function FarmCalc({ inventory }: Props) {
     return o;
   }, [relics, chosen, subtractOwned, inventory]);
 
+  // Parse the pasted Resurgence — trade-chat "[Lith K5 Relic]" links or one per line.
+  const availableRelics = useMemo(() => {
+    if (!onlyAvailable) return undefined;
+    const brackets = [...availableText.matchAll(/\[([^\]]+)\]/g)].map(m => m[1]);
+    const tokens = brackets.length ? brackets : availableText.split(/[\n,;]+/);
+    const out: string[] = [];
+    for (const raw of tokens) {
+      const name = raw.trim().replace(/\s*relic\s*$/i, "").trim();
+      if (name) out.push(name);
+    }
+    return out.length ? out : undefined;
+  }, [onlyAvailable, availableText]);
+
   const plan = useMemo(() => {
     const target = Math.max(1, Math.min(1000000, parseInt(targetText) || 0));
     const setTargets: Record<string, number> = {};
@@ -63,9 +78,9 @@ export default function FarmCalc({ inventory }: Props) {
     return coFarmPlan(relics, setTargets, {
       squadSize: squad, refinement, autoRefinement: auto,
       relicOverrides, refinementOverrides: refineOverrides, squadOverrides,
-      ownedParts, trials: 60, seed: 1,
+      ownedParts, availableRelics, trials: 60, seed: 1,
     });
-  }, [relics, chosen, targetText, squad, refinement, auto, relicOverrides, refineOverrides, squadOverrides, ownedParts]);
+  }, [relics, chosen, targetText, squad, refinement, auto, relicOverrides, refineOverrides, squadOverrides, ownedParts, availableRelics]);
 
   const mins = (() => { const v = parseFloat(minutes); return v > 0 ? v : 3.5; })();
   const ceil = (n: number) => Math.ceil(n).toLocaleString();
@@ -102,7 +117,16 @@ export default function FarmCalc({ inventory }: Props) {
           <label className="wfs-field"><span>Min / mission</span>
             <input className="wfs-input wfs-narrow" value={minutes} onChange={e => setMinutes(e.target.value)} /></label>
           <label className="wfs-check wfs-inline"><input type="checkbox" checked={subtractOwned} onChange={e => setSubtractOwned(e.target.checked)} /><span>Subtract owned (inventory)</span></label>
+          <label className="wfs-check wfs-inline"><input type="checkbox" checked={onlyAvailable} onChange={e => setOnlyAvailable(e.target.checked)} /><span>Available relics only</span></label>
         </div>
+
+        {onlyAvailable && (
+          <div className="wfs-avail">
+            <span className="wfs-avail-lbl">Paste the current Resurgence — trade-chat [links] or one relic per line:</span>
+            <textarea className="wfs-input wfs-textarea" value={availableText} onChange={e => setAvailableText(e.target.value)}
+              placeholder="[Lith K5 Relic][Lith M7 Relic][Meso E5 Relic][Neo B6 Relic][Axi H5 Relic][Axi A12 Relic]" />
+          </div>
+        )}
 
         {!plan ? (
           <div className="wfs-empty">Tick one or more sets on the left.</div>
