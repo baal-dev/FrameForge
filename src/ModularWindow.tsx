@@ -457,11 +457,14 @@ export default function ModularWindow({
             </div>
             <div className="modular-farm-bar"><div className="modular-farm-bar-fill" style={{ width: `${pct}%` }} /></div>
             <div className="modular-farm-parts">
-              {partNames.map((p, i) => (
-                <span key={i} className={`modular-farm-part ${ownedQty(p) > 0 ? "have" : "missing"}`} title={p}>
-                  {shortPartName(p)}
-                </span>
-              ))}
+              {partNames.map((p, i) => {
+                const q = ownedQty(p);
+                return (
+                  <span key={i} className={`modular-farm-part ${q > 0 ? "have" : "missing"}`} title={p}>
+                    {shortPartName(p)} <b className="modular-farm-qty">{q}</b>
+                  </span>
+                );
+              })}
             </div>
           </div>
         );

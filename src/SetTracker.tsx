@@ -171,7 +171,7 @@ export default function SetTracker({ inventory }: Props) {
                     className={`settrk-part ${p.owned > 0 ? "have" : "missing"}`}
                     title={`${p.name} — ${p.owned > 0 ? `owned ×${p.owned}` : "missing"}`}
                   >
-                    {p.short}{p.owned > 1 ? ` ×${p.owned}` : ""}
+                    {p.short} <b>{p.owned}</b>
                   </span>
                 ))}
               </div>
