@@ -20,6 +20,7 @@ export default function FarmCalc({ inventory }: Props) {
   const [search, setSearch] = useState("");
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [targetText, setTargetText] = useState("100");
+  const [targets, setTargets] = useState<Record<string, number>>({}); // per-set target
   const [refinement, setRefinement] = useState<Refinement>("Radiant");
   const [auto, setAuto] = useState(true);
   const [squad, setSquad] = useState(4);
@@ -44,6 +45,12 @@ export default function FarmCalc({ inventory }: Props) {
     const q = search.trim().toLowerCase();
     return q ? allSets.filter(s => s.toLowerCase().includes(q)) : allSets;
   }, [allSets, search]);
+
+  const defaultTarget = Math.max(1, Math.min(1000000, parseInt(targetText) || 100));
+  const toggleSet = (s: string) => {
+    setChosen(prev => { const n = new Set(prev); if (n.has(s)) n.delete(s); else n.add(s); return n; });
+    setTargets(prev => (prev[s] != null ? prev : { ...prev, [s]: defaultTarget }));
+  };
 
   const ownedOf = (name: string): number => inventory[name]?.quantity ?? 0;
 
@@ -71,16 +78,15 @@ export default function FarmCalc({ inventory }: Props) {
   }, [onlyAvailable, availableText]);
 
   const plan = useMemo(() => {
-    const target = Math.max(1, Math.min(1000000, parseInt(targetText) || 0));
     const setTargets: Record<string, number> = {};
-    for (const s of chosen) setTargets[s] = target;
+    for (const s of chosen) setTargets[s] = Math.max(1, Math.min(1000000, targets[s] ?? defaultTarget));
     if (Object.keys(setTargets).length === 0) return null;
     return coFarmPlan(relics, setTargets, {
       squadSize: squad, refinement, autoRefinement: auto,
       relicOverrides, refinementOverrides: refineOverrides, squadOverrides,
       ownedParts, availableRelics, trials: 60, seed: 1,
     });
-  }, [relics, chosen, targetText, squad, refinement, auto, relicOverrides, refineOverrides, squadOverrides, ownedParts, availableRelics]);
+  }, [relics, chosen, targets, defaultTarget, squad, refinement, auto, relicOverrides, refineOverrides, squadOverrides, ownedParts, availableRelics]);
 
   const mins = (() => { const v = parseFloat(minutes); return v > 0 ? v : 3.5; })();
   const ceil = (n: number) => Math.ceil(n).toLocaleString();
@@ -91,11 +97,18 @@ export default function FarmCalc({ inventory }: Props) {
         <input className="wfs-input" placeholder="Filter sets…" value={search} onChange={e => setSearch(e.target.value)} />
         <div className="wfs-setlist">
           {shownSets.map(s => (
-            <label key={s} className="wfs-check">
-              <input type="checkbox" checked={chosen.has(s)}
-                onChange={() => setChosen(prev => { const n = new Set(prev); if (n.has(s)) n.delete(s); else n.add(s); return n; })} />
-              <span>{s}</span>
-            </label>
+            <div key={s} className="wfs-setrow">
+              <label className="wfs-check wfs-setrow-check">
+                <input type="checkbox" checked={chosen.has(s)} onChange={() => toggleSet(s)} />
+                <span>{s}</span>
+              </label>
+              {chosen.has(s) && (
+                <input className="wfs-input wfs-settarget" type="number" min={1}
+                  title={`How many ${s} sets you want`}
+                  value={targets[s] ?? defaultTarget}
+                  onChange={e => setTargets(prev => ({ ...prev, [s]: Math.max(1, parseInt(e.target.value) || 1) }))} />
+              )}
+            </div>
           ))}
           {shownSets.length === 0 && <div className="wfs-empty">{relics.length === 0 ? "Open the Relics tab once to load drop data." : "No sets match."}</div>}
         </div>
@@ -103,8 +116,9 @@ export default function FarmCalc({ inventory }: Props) {
 
       <div className="wfs-main">
         <div className="wfs-controls">
-          <label className="wfs-field"><span>Of each set</span>
-            <input className="wfs-input wfs-narrow" value={targetText} onChange={e => setTargetText(e.target.value)} /></label>
+          <label className="wfs-field"><span>Default per set</span>
+            <input className="wfs-input wfs-narrow" value={targetText} onChange={e => setTargetText(e.target.value)}
+              title="Applied to a set when you first tick it — change any set's number in the list on the left." /></label>
           <label className="wfs-field"><span>Refinement</span>
             <select className="wfs-input" value={refinement} disabled={auto} onChange={e => setRefinement(e.target.value as Refinement)}>
               {REFINEMENTS.map(r => <option key={r} value={r}>{r}</option>)}
