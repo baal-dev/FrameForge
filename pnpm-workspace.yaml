@@ -1,0 +1,5 @@
+# pnpm v10 moved settings here (out of package.json's "pnpm" field).
+# esbuild needs its postinstall build script to place its platform binary;
+# without it Vite and `tauri dev` fail with ERR_PNPM_IGNORED_BUILDS.
+onlyBuiltDependencies:
+  - esbuild

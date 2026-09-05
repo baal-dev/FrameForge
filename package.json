@@ -24,8 +24,5 @@
     "terser": "^5.48.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
   }
 }
