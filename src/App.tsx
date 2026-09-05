@@ -80,6 +80,7 @@ import Syndicates from "./Syndicates";
 import Weapons from "./Weapons";
 import Overlay from "./Overlay";
 import ModularWindow from "./ModularWindow";
+import SetTracker from "./SetTracker";
 import { HelpTip } from "./HelpTip";
 import "./App.css";
 
@@ -834,7 +835,7 @@ const [blobLogEnabled, setBlobLogEnabled] = useState(false);
   const [foundryFilters, setFoundryFilters] = useState<FoundryFilters>(FOUNDRY_FILTERS_DEFAULT);
   const [marketFilters, setMarketFilters] = useState(MARKET_FILTERS_DEFAULT);
   const [relicFilters, setRelicFilters] = useState(RELIC_FILTERS_DEFAULT);
-  const [completionistView, setCompletionistView] = useState<"syndicates" | "weapons">("syndicates");
+  const [completionistView, setCompletionistView] = useState<"syndicates" | "weapons" | "sets">("syndicates");
   const [weaponsTab, setWeaponsTab] = useState<"Primary" | "Secondary" | "Melee" | "Operator">("Primary");
   const [syndicateFilters, setSyndicateFilters] = useState({
     activeGroup: "main" as "main" | "openworld" | "other" | "lab",
@@ -3365,7 +3366,7 @@ if (typeof s.autoDiagEnabled === "boolean") {
             <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0 }}>
               {/* Top-level view switcher */}
               <div style={{ display: "flex", gap: 2, padding: "8px 12px 0", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-                {(["syndicates", "weapons"] as const).map(v => (
+                {(["syndicates", "weapons", "sets"] as const).map(v => (
                   <button
                     key={v}
                     onClick={() => setCompletionistView(v)}
@@ -3384,7 +3385,7 @@ if (typeof s.autoDiagEnabled === "boolean") {
                       textTransform: "capitalize",
                     }}
                   >
-                    {v === "syndicates" ? "Syndicates" : "Weapons"}
+                    {v === "syndicates" ? "Syndicates" : v === "weapons" ? "Weapons" : "Prime Sets"}
                   </button>
                 ))}
               </div>
@@ -3393,6 +3394,9 @@ if (typeof s.autoDiagEnabled === "boolean") {
               )}
               {completionistView === "weapons" && (
                 <Weapons inventory={inventory} activeTab={weaponsTab} onTabChange={setWeaponsTab} />
+              )}
+              {completionistView === "sets" && (
+                <SetTracker inventory={inventory} />
               )}
             </div>
           </ErrorBoundary>
