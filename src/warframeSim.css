@@ -72,3 +72,9 @@ select.wfs-input { cursor: pointer; }
 .wfs-setrow-check { flex: 1; min-width: 0; }
 .wfs-setrow-check span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wfs-settarget { width: 58px; flex-shrink: 0; padding: 2px 6px; font-size: 12px; text-align: right; }
+
+/* Fix: don't let flex compress the stacked blocks/tables — keep their natural
+   height so the scroll container (.wfs / .wfs-main) actually scrolls instead of
+   clipping rows when many sets are added. */
+.wfs > *, .wfs-main > * { flex-shrink: 0; }
+.wfs-main { min-height: 0; }
