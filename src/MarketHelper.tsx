@@ -6,6 +6,8 @@ import { HelpTip } from "./HelpTip";
 import WfmTrading from "./WfmTrading";
 import ItemMarketPopup from "./ItemMarketPopup";
 import type { InventoryItem } from "./App";
+import { parseRelics, shortPartName } from "./warframeSim";
+import type { Relic, Reward } from "./warframeSim";
 import polMadurai  from "./assets/polarity/madurai.svg";
 import polVazarin  from "./assets/polarity/vazarin.svg";
 import polNaramon  from "./assets/polarity/naramon.svg";
@@ -614,6 +616,7 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
         <RelicsTab
           wfmItems={wfmItems}
           prices={prices}
+          wfmLookup={wfmLookup}
           onOpenPopup={(urlName, displayName) => {
             invoke("wfm_queue_price_priority", { urlName }).catch(() => {});
             setPopup({ urlName, displayName });
@@ -733,14 +736,35 @@ const MODS_PAGE_SIZE = 60;
 // ─── Relics tab ────────────────────────────────────────────────────────────────
 // Intact Void relics are tradeable on warframe.market. List them straight from the
 // WFM item catalogue (guaranteed correct names/slugs) and reuse the order popup.
-function RelicsTab({ wfmItems, prices, onOpenPopup }: {
+const RELIC_RARITY_COLOR: Record<Reward["rarity"], string> = {
+  Common: "#c8a06a",
+  Uncommon: "#b7c0c9",
+  Rare: "#e3c341",
+};
+
+function RelicsTab({ wfmItems, prices, wfmLookup, onOpenPopup }: {
   wfmItems: { item_name: string; url_name: string }[];
   prices: Map<string, WfmPrice>;
+  wfmLookup: Map<string, string>;
   onOpenPopup: (urlName: string, displayName: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [era, setEra] = useState<"All" | "Lith" | "Meso" | "Neo" | "Axi" | "Requiem">("All");
   const [sortMode, setSortMode] = useState<"plat" | "az">("plat");
+
+  // Drop-table contents so each relic can show what's inside and be searchable
+  // by part name. fullName ("Lith E2") → rewards. Requiem relics aren't in the
+  // drop data, so they simply render without a contents list.
+  const [contents, setContents] = useState<Map<string, Reward[]>>(new Map());
+  useEffect(() => {
+    invoke<any>("get_drop_data")
+      .then(d => {
+        const m = new Map<string, Reward[]>();
+        for (const r of parseRelics(d) as Relic[]) m.set(r.fullName, r.rewards);
+        setContents(m);
+      })
+      .catch(() => {});
+  }, []);
 
   const relics = useMemo(
     () => wfmItems.filter(w => /^(Lith|Meso|Neo|Axi|Requiem)\s.+\sRelic$/.test(w.item_name)),
@@ -751,26 +775,51 @@ function RelicsTab({ wfmItems, prices, onOpenPopup }: {
     const q = search.trim().toLowerCase();
     let r = relics;
     if (era !== "All") r = r.filter(w => w.item_name.startsWith(era + " "));
-    if (q) r = r.filter(w => w.item_name.toLowerCase().includes(q));
-    const withPrice = r.map(w => ({ ...w, price: prices.get(w.url_name)?.sell_median }));
+    if (q) r = r.filter(w => {
+      if (w.item_name.toLowerCase().includes(q)) return true;
+      // Match by part name so e.g. "nidus prime neuroptic" finds every relic
+      // that drops that part.
+      const rewards = contents.get(w.item_name.replace(/ Relic$/, ""));
+      return !!rewards?.some(rw => rw.itemName.toLowerCase().includes(q));
+    });
+    const withPrice = r.map(w => ({
+      ...w,
+      price: prices.get(w.url_name)?.sell_median,
+      rewards: contents.get(w.item_name.replace(/ Relic$/, "")),
+    }));
     withPrice.sort((a, b) => sortMode === "plat"
       ? ((b.price ?? -1) - (a.price ?? -1)) || a.item_name.localeCompare(b.item_name)
       : a.item_name.localeCompare(b.item_name));
     return withPrice;
-  }, [relics, era, search, sortMode, prices]);
+  }, [relics, era, search, sortMode, prices, contents]);
 
-  // Fetch prices for the relics currently shown.
+  // Fetch prices for the relics currently shown, plus the parts they contain
+  // (most part prices are already seeded from the bulk snapshot; this just
+  // refreshes what's on screen).
   useEffect(() => {
-    const slugs = shown.slice(0, 250).map(r => r.url_name);
-    if (slugs.length) invoke("wfm_queue_prices", { urlNames: slugs }).catch(() => {});
+    const slugs = new Set<string>();
+    for (const r of shown.slice(0, 120)) {
+      slugs.add(r.url_name);
+      for (const rw of r.rewards ?? []) {
+        const s = wfmLookup.get(normalizeForWfm(rw.itemName));
+        if (s) slugs.add(s);
+      }
+    }
+    if (slugs.size) invoke("wfm_queue_prices", { urlNames: [...slugs] }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [era, search, relics.length]);
+  }, [era, search, relics.length, contents.size]);
 
+  const openPart = (partName: string) => {
+    const slug = wfmLookup.get(normalizeForWfm(partName)) ?? normalizeForWfm(partName);
+    onOpenPopup(slug, partName);
+  };
+
+  const q = search.trim().toLowerCase();
   const eras = ["All", "Lith", "Meso", "Neo", "Axi", "Requiem"] as const;
   return (
     <>
       <div className="market-header">
-        <input className="foundry-search" style={{ width: 200 }} placeholder="Search relics…"
+        <input className="foundry-search" style={{ width: 220 }} placeholder="Search relic or part…"
           value={search} onChange={e => setSearch(e.target.value)} />
         <div className="filter-bar" style={{ border: "none", padding: 0, flex: 1, flexWrap: "wrap" }}>
           {eras.map(e => (
@@ -789,17 +838,64 @@ function RelicsTab({ wfmItems, prices, onOpenPopup }: {
             {wfmItems.length === 0 ? "Connecting to warframe.market…" : "No relics match."}
           </div>
         ) : shown.map(r => (
-          <button key={r.url_name} onClick={() => onOpenPopup(r.url_name, r.item_name)}
+          <div key={r.url_name}
             style={{
-              display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start",
+              display: "flex", flexDirection: "column", gap: 6, alignItems: "stretch",
               padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8,
-              background: "var(--surface)", color: "var(--text)", cursor: "pointer", textAlign: "left",
+              background: "var(--surface)", color: "var(--text)", textAlign: "left",
             }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>{r.item_name.replace(/ Relic$/, "")}</span>
-            <span style={{ fontSize: 13, color: r.price != null ? "#3fb950" : "var(--muted)" }}>
-              {r.price != null ? `${r.price} p` : "—"}
-            </span>
-          </button>
+            {/* Relic name + price — click to buy/sell the relic itself. */}
+            <button onClick={() => onOpenPopup(r.url_name, r.item_name)}
+              title="Buy / sell this relic"
+              style={{
+                display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8,
+                background: "transparent", border: "none", padding: 0, cursor: "pointer",
+                color: "var(--text)", textAlign: "left",
+              }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{r.item_name.replace(/ Relic$/, "")}</span>
+              <span style={{ fontSize: 13, color: r.price != null ? "#3fb950" : "var(--muted)" }}>
+                {r.price != null ? `${r.price} p` : "—"}
+              </span>
+            </button>
+            {/* Contents — each part is clickable to buy/sell that part. */}
+            {r.rewards && r.rewards.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {r.rewards.map((rw, i) => {
+                  const partPrice = (() => {
+                    const slug = wfmLookup.get(normalizeForWfm(rw.itemName));
+                    return slug ? prices.get(slug)?.sell_median : undefined;
+                  })();
+                  const hit = q && rw.itemName.toLowerCase().includes(q);
+                  return (
+                    <button key={i} onClick={() => openPart(rw.itemName)}
+                      title={`Buy / sell ${rw.itemName}`}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6, padding: "2px 6px",
+                        background: hit ? "rgba(56,139,253,.14)" : "transparent",
+                        border: "1px solid " + (hit ? "rgba(56,139,253,.4)" : "transparent"),
+                        borderRadius: 5, cursor: "pointer", textAlign: "left", width: "100%",
+                      }}>
+                      <span style={{
+                        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                        background: RELIC_RARITY_COLOR[rw.rarity],
+                      }} />
+                      <span style={{
+                        flex: 1, minWidth: 0, fontSize: 12, color: "var(--text)",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>
+                        {shortPartName(rw.itemName) === "Blueprint"
+                          ? rw.itemName.replace(/ Blueprint$/, "")
+                          : rw.itemName}
+                      </span>
+                      {partPrice != null && (
+                        <span style={{ fontSize: 11, color: "var(--muted)", flexShrink: 0 }}>{partPrice} p</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         ))}
       </div>
     </>
