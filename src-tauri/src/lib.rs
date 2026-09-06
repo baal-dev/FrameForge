@@ -5595,17 +5595,22 @@ async fn start_monitor(app: tauri::AppHandle, state: State<'_, AppState>) -> Res
                         // Persist one opened-relic record for the Farm Stats view.
                         // Everyone in a fissure runs the same era, so the era of any
                         // loaded relic is the run's era; fall back to "?" if unknown.
-                        let era = session_relics.first()
-                            .map(|p| era_from_relic_path(p))
-                            .unwrap_or_else(|| "?".to_string());
-                        if let Ok(conn) = state.conn.lock() {
-                            let _ = crate::db::record_relic_run(
-                                &conn,
-                                &chrono::Local::now().to_rfc3339(),
-                                &era,
-                                &inv_path,
-                                &item_name,
-                            );
+                        // Kept in its own scope with a fresh State handle so the DB
+                        // lock guard drops before the outer `state` binding.
+                        {
+                            let era = session_relics.first()
+                                .map(|p| era_from_relic_path(p))
+                                .unwrap_or_else(|| "?".to_string());
+                            let st = ee_ocr_app.state::<AppState>();
+                            if let Ok(conn) = st.conn.lock() {
+                                let _ = crate::db::record_relic_run(
+                                    &conn,
+                                    &chrono::Local::now().to_rfc3339(),
+                                    &era,
+                                    &inv_path,
+                                    &item_name,
+                                );
+                            }
                         }
                     }
 
