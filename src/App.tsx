@@ -844,7 +844,7 @@ const [blobLogEnabled, setBlobLogEnabled] = useState(false);
     activeGroup: "main" as "main" | "openworld" | "other" | "lab",
     activeTab: "Steel Meridian", missingOnly: false, search: "",
   });
-  const [statsTab, setStatsTab] = useState<"trade" | "item">("trade");
+  const [statsTab, setStatsTab] = useState<"trade" | "item" | "farm">("trade");
   const [reportsDateRange, setReportsDateRange] = useState<number | "all">(30);
   const [lastChanged, setLastChanged] = useState<Record<string, number>>({});
   const [logPanelH, setLogPanelH] = useState(180);
@@ -3383,7 +3383,7 @@ if (typeof s.autoDiagEnabled === "boolean") {
         {/* ── Statistics module ── */}
         {activeModule === "statistics" && (
           <ErrorBoundary>
-            <Statistics tab={statsTab} onTabChange={setStatsTab} dateRange={reportsDateRange} onDateRangeChange={setReportsDateRange} clockFormat={clockFormat} systemLocale={systemLocale} />
+            <Statistics tab={statsTab} onTabChange={setStatsTab} dateRange={reportsDateRange} onDateRangeChange={setReportsDateRange} clockFormat={clockFormat} systemLocale={systemLocale} catalog={catalog} />
           </ErrorBoundary>
         )}
 

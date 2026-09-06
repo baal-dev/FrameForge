@@ -98,6 +98,21 @@ fn migrate(conn: &Connection) -> Result<()> {
         conn.pragma_update(None, "user_version", 3)?;
     }
 
+    if version < 4 {
+        // One row per relic the local player opened (reward confirmed via EE.log).
+        // Feeds the Farm Stats view: relics opened, breakdown by era, top rewards.
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS relic_runs (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp   TEXT    NOT NULL,
+                era         TEXT    NOT NULL DEFAULT '?',
+                item_path   TEXT    NOT NULL,
+                item_name   TEXT    NOT NULL
+            );"
+        )?;
+        conn.pragma_update(None, "user_version", 4)?;
+    }
+
     // Prune entries older than 7 days so the log doesn't grow unbounded.
     conn.execute_batch(
         "DELETE FROM quantity_changes WHERE timestamp < unixepoch('now', '-7 days');"
@@ -324,4 +339,57 @@ pub fn get_quantity_changes(conn: &Connection, limit: i64) -> Result<Vec<Quantit
         .filter_map(|r| r.ok())
         .collect();
     Ok(rows)
+}
+
+// ── Relic runs (Farm Stats) ──────────────────────────────────────────────────
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct RelicRun {
+    pub id:        i64,
+    pub timestamp: String, // RFC3339 local time
+    pub era:       String, // Lith / Meso / Neo / Axi / Requiem / ?
+    pub item_path: String, // inventory unique path of the reward
+    pub item_name: String, // best-effort display / leaf name
+}
+
+/// Record one opened relic (the local player confirmed a reward).
+pub fn record_relic_run(
+    conn: &Connection,
+    timestamp: &str,
+    era: &str,
+    item_path: &str,
+    item_name: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO relic_runs (timestamp, era, item_path, item_name)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![timestamp, era, item_path, item_name],
+    )?;
+    Ok(())
+}
+
+pub fn get_relic_runs(conn: &Connection) -> Result<Vec<RelicRun>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, timestamp, era, item_path, item_name
+         FROM relic_runs
+         ORDER BY id DESC",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(RelicRun {
+                id:        row.get(0)?,
+                timestamp: row.get(1)?,
+                era:       row.get(2)?,
+                item_path: row.get(3)?,
+                item_name: row.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+pub fn clear_relic_runs(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM relic_runs", [])?;
+    Ok(())
 }

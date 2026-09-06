@@ -3888,6 +3888,18 @@ fn get_tracked_items(state: State<AppState>) -> Result<Vec<TrackedItem>, String>
 }
 
 #[tauri::command]
+fn get_relic_runs(state: State<AppState>) -> Result<Vec<crate::db::RelicRun>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::get_relic_runs(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn clear_relic_runs(state: State<AppState>) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::clear_relic_runs(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn add_tracked_item(state: State<AppState>, unique_name: String, display_name: String) -> Result<(), String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     db::add_tracked_item(&conn, &unique_name, &display_name).map_err(|e| e.to_string())
@@ -5579,6 +5591,22 @@ async fn start_monitor(app: tauri::AppHandle, state: State<'_, AppState>) -> Res
                              └─ Qty        : {} → {}\n\n",
                             store_path, inv_path, old_qty, new_qty
                         ));
+
+                        // Persist one opened-relic record for the Farm Stats view.
+                        // Everyone in a fissure runs the same era, so the era of any
+                        // loaded relic is the run's era; fall back to "?" if unknown.
+                        let era = session_relics.first()
+                            .map(|p| era_from_relic_path(p))
+                            .unwrap_or_else(|| "?".to_string());
+                        if let Ok(conn) = state.conn.lock() {
+                            let _ = crate::db::record_relic_run(
+                                &conn,
+                                &chrono::Local::now().to_rfc3339(),
+                                &era,
+                                &inv_path,
+                                &item_name,
+                            );
+                        }
                     }
 
                     // Enforce a minimum 5-second overlay display time. EE.log is
@@ -6698,6 +6726,23 @@ fn path_display_name(path: &str) -> String {
 /// /Lotus/Types/StoreItems/... → unchanged  (bundle packages — no catalog entry)
 fn store_to_unique(path: &str) -> String {
     path.replacen("/Lotus/StoreItems/", "/Lotus/", 1)
+}
+
+/// Derive the void fissure era from a relic projection path.
+/// ".../Projections/T1VoidProjection..." → tier digit → era name.
+fn era_from_relic_path(path: &str) -> String {
+    let tier = path.rsplit('/').next()
+        .and_then(|seg| seg.strip_prefix('T'))
+        .and_then(|rest| rest.chars().next());
+    match tier {
+        Some('1') => "Lith",
+        Some('2') => "Meso",
+        Some('3') => "Neo",
+        Some('4') => "Axi",
+        Some('5') => "Requiem",
+        _ => "?",
+    }
+    .to_string()
 }
 
 /// Resolve a store item path to a display name using the catalog, falling back to path parsing.
@@ -9835,6 +9880,8 @@ pub fn run() {
             fetch_item_list,
             get_change_log,
             get_tracked_items,
+            get_relic_runs,
+            clear_relic_runs,
             add_tracked_item,
             remove_tracked_item,
             get_item_snapshots,
