@@ -5602,7 +5602,10 @@ async fn start_monitor(app: tauri::AppHandle, state: State<'_, AppState>) -> Res
                                 .map(|p| era_from_relic_path(p))
                                 .unwrap_or_else(|| "?".to_string());
                             let st = ee_ocr_app.state::<AppState>();
-                            if let Ok(conn) = st.conn.lock() {
+                            // Bind the lock to a named local (not a tail temporary) so
+                            // the guard drops before `st` at the end of this block.
+                            let lock = st.conn.lock();
+                            if let Ok(conn) = lock {
                                 let _ = crate::db::record_relic_run(
                                     &conn,
                                     &chrono::Local::now().to_rfc3339(),
