@@ -2329,6 +2329,14 @@ static RIVEN_FLAG_VA: std::sync::OnceLock<std::sync::Mutex<Option<(u32, Option<u
 static RIVEN_WATCHER_RUNNING: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// Guard: prevents spawning multiple EE.log watcher threads if start_log_watcher is called
+/// again (React StrictMode mounts the app twice in dev, and remounts fire it a second time).
+/// Two watchers means every trigger fires twice — the relic-pick overlay flickers and the
+/// 5-second cooldown thrashes, so a duplicate `PopulateInventoryGrid` gets suppressed while
+/// the real one may be the suppressed one. One watcher only.
+static LOG_WATCHER_RUNNING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 fn get_riven_db() -> &'static std::sync::Mutex<HashMap<String, RivenEntry>> {
     RIVEN_DB.get_or_init(|| {
         std::sync::Mutex::new(load_riven_csv_from_url().unwrap_or_default())
@@ -2915,9 +2923,15 @@ fn parse_trade_dialog(raw: &str) -> Option<ParsedTrade> {
 /// Called unconditionally at app startup — EE.log is plain file I/O, not memory reading.
 #[tauri::command]
 fn start_log_watcher(app: tauri::AppHandle) -> Result<(), String> {
+    use std::sync::atomic::Ordering;
+
     let log_path = dirs::data_local_dir()
         .map(|d| d.join("Warframe").join("EE.log"))
         .ok_or("Cannot find LocalAppData")?;
+
+    if LOG_WATCHER_RUNNING.swap(true, Ordering::SeqCst) {
+        return Ok(()); // already running — don't spawn a second watcher thread
+    }
 
     std::thread::spawn(move || {
         use std::io::{Read, Seek, SeekFrom};
@@ -4197,6 +4211,12 @@ fn relic_pick_show(app: &tauri::AppHandle) {
         .unwrap_or((1920.0 - 440.0, 1.0));
     let _ = win.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y: 20.0 }));
     let _ = win.show();
+    // Click-through: this overlay sits on the relic selection screen where the player
+    // clicks relics in the grid. Depending on resolution it can overlap the grid, and a
+    // transparent window that eats clicks makes it feel like an invisible pane is covering
+    // the game. It's display-only info and auto-dismisses on the EE.log map/entitlement
+    // markers, so let clicks pass through (the ✕ button becomes inert — auto-dismiss covers it).
+    let _ = win.set_ignore_cursor_events(true);
 }
 
 fn relic_pick_hide(app: &tauri::AppHandle) {
@@ -7772,6 +7792,12 @@ fn show_overlay_window(
     ));
     let _ = win.show();
     let _ = win.set_always_on_top(true);
+    // Click-through: the reward overlay sits directly over the in-game reward cards.
+    // Without this the transparent window swallows every click in that region, so the
+    // player can't actually pick their reward — it feels like an invisible window is
+    // covering the game. Overlay.tsx is display-only (no buttons), so ignoring cursor
+    // events costs nothing and lets clicks pass straight through to Warframe.
+    let _ = win.set_ignore_cursor_events(true);
 
     // On Windows 10, WebView2 defers loading the page when the window starts
     // off-screen. If it's still on about:blank, navigate to the overlay URL now.
