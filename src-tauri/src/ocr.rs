@@ -1312,7 +1312,9 @@ fn bar_centers_are_valid(centers: &[f32]) -> bool {
 /// Evenly-distributed card X centers (fraction of image width) for N cards.
 /// Calibrated from bar-detected centers on 1920×1080 captures: 4-card spread
 /// is 0.31→0.69 (spacing ≈0.127), not the old 0.24→0.76.
-/// Used as the fallback when rarity bar detection fails.
+/// Formerly the no-bars fallback; the fallback now clusters the actual OCR card
+/// lines instead (layout-independent), so this is kept only for reference/tests.
+#[allow(dead_code)]
 fn hardcoded_card_centers(n: usize) -> Vec<f32> {
     match n {
         1 => vec![0.50],
@@ -1582,11 +1584,6 @@ fn match_reward_items(
     let bars_trusted = !card_centers.is_empty()
         && card_centers.len() == word_card_count
         && bar_centers_are_valid(&card_centers);
-    let active_centers: Vec<f32> = if bars_trusted {
-        card_centers.clone()
-    } else {
-        hardcoded_card_centers(word_card_count)
-    };
 
     // ── Raw OCR lines log (all lines, accepted + skipped with reason) ────────
     let raw_ocr_log: String = {
@@ -1617,12 +1614,14 @@ fn match_reward_items(
         lines_log.join("\n")
     };
 
-    let columns: Vec<(Vec<String>, f32)> = {
+    let columns: Vec<(Vec<String>, f32)> = if bars_trusted {
+        // Rarity bars gave reliable per-card X centres — snap each OCR line to the
+        // nearest bar centre.
         let mut cols: Vec<(Vec<String>, f32)> =
-            active_centers.iter().map(|&cx| (Vec::new(), cx)).collect();
+            card_centers.iter().map(|&cx| (Vec::new(), cx)).collect();
         for (text, x, y) in ocr_lines {
             if *y < 0.10 || *y >= ocr_y_max || is_player_name(text) || is_ui_badge(text) { continue; }
-            let idx = active_centers.iter().enumerate()
+            let idx = card_centers.iter().enumerate()
                 .min_by(|(_, a), (_, b)| {
                     (x - *a).abs().partial_cmp(&(x - *b).abs())
                         .unwrap_or(std::cmp::Ordering::Equal)
@@ -1630,6 +1629,46 @@ fn match_reward_items(
                 .map(|(i, _)| i)
                 .unwrap_or(0);
             cols[idx].0.push(text.clone());
+        }
+        cols
+    } else {
+        // No trustworthy bars: build the columns from the card-name lines OCR
+        // actually found, by clustering them along X. The old fallback snapped every
+        // line onto fixed centres [0.31,0.44,0.56,0.69]; when the cards sit a hair
+        // off those (e.g. a tight 4-card row at 0.38/0.45/0.54/0.63) two cards snap
+        // to the same centre and another centre stays empty — the screen reads as 3,
+        // and with an EE.log squad hint of 4 the result never locks, so NO overlay
+        // ever appears. Clustering the real lines is layout-independent: each group
+        // of nearby lines is exactly one card, so every card that was read counts.
+        let mut valid: Vec<(f32, String)> = ocr_lines.iter()
+            .filter(|(t, _x, y)| !(*y < 0.10 || *y >= ocr_y_max
+                || is_player_name(t) || is_ui_badge(t)))
+            .map(|(t, x, _y)| (*x, t.clone()))
+            .collect();
+        valid.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        // Reward-card centres sit ≥0.06 of screen width apart; the wrapped sub-lines
+        // of one name are far closer, so 0.05 keeps a card together without merging
+        // its neighbour.
+        const CLUSTER_GAP: f32 = 0.05;
+        let mut cols: Vec<(Vec<String>, f32)> = Vec::new();
+        let mut cluster_sum = 0.0f32;
+        let mut cluster_n = 0.0f32;
+        for (x, t) in valid {
+            let start_new = match cols.last() {
+                Some(_) => (x - cluster_sum / cluster_n.max(1.0)).abs() > CLUSTER_GAP,
+                None => true,
+            };
+            if start_new {
+                cols.push((vec![t], x));
+                cluster_sum = x;
+                cluster_n = 1.0;
+            } else {
+                cluster_sum += x;
+                cluster_n += 1.0;
+                let last = cols.last_mut().unwrap();
+                last.0.push(t);
+                last.1 = cluster_sum / cluster_n; // running mean centre
+            }
         }
         cols
     };
@@ -1649,7 +1688,7 @@ fn match_reward_items(
     let mut col_match_log: Vec<String> = Vec::new();
 
     for (col_idx, (col_texts, cx)) in columns.iter().enumerate() {
-        if items.len() >= active_centers.len() { break; }
+        if items.len() >= columns.len() { break; }
         let words = build_word_set(col_texts);
 
         // Log what OCR text this column contains
