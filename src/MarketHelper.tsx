@@ -36,7 +36,7 @@ export interface MarketFilters {
   conditions: ("dupes" | "itemowned" | "fullset" | "hasparts")[];
   vault:      ("vaulted" | "unvaulted")[];
   sortMode:   "plat" | "ducats" | "az" | "za";
-  activeMarketTab: "trading" | "sets" | "mods" | "rivens" | "sisters";
+  activeMarketTab: "trading" | "sets" | "mods" | "rivens" | "sisters" | "relics";
 }
 export const MARKET_FILTERS_DEFAULT: MarketFilters = {
   search: "", ownership: [], conditions: [], vault: [], sortMode: "ducats",
@@ -568,6 +568,9 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
         <button className={activeMarketTab === "mods" ? "active" : ""} onClick={() => set("activeMarketTab", "mods")}>
           Mods &amp; Arcanes
         </button>
+        <button className={activeMarketTab === "relics" ? "active" : ""} onClick={() => set("activeMarketTab", "relics")}>
+          Relics
+        </button>
         <button className={activeMarketTab === "rivens" ? "active" : ""} onClick={() => set("activeMarketTab", "rivens")}>
           Rivens
         </button>
@@ -605,6 +608,17 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
 
       {activeMarketTab === "rivens" && (
         <RivensTab rivens={rivens} allItems={allItems} wfmUsername={wfmUsername} onAuctionPosted={() => setAuctionRefreshKey(k => k + 1)} />
+      )}
+
+      {activeMarketTab === "relics" && (
+        <RelicsTab
+          wfmItems={wfmItems}
+          prices={prices}
+          onOpenPopup={(urlName, displayName) => {
+            invoke("wfm_queue_price_priority", { urlName }).catch(() => {});
+            setPopup({ urlName, displayName });
+          }}
+        />
       )}
 
       {activeMarketTab === "sisters" && (
@@ -715,6 +729,82 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
 // ─── Mods & Arcanes tab ───────────────────────────────────────────────────────
 
 const MODS_PAGE_SIZE = 60;
+
+// ─── Relics tab ────────────────────────────────────────────────────────────────
+// Intact Void relics are tradeable on warframe.market. List them straight from the
+// WFM item catalogue (guaranteed correct names/slugs) and reuse the order popup.
+function RelicsTab({ wfmItems, prices, onOpenPopup }: {
+  wfmItems: { item_name: string; url_name: string }[];
+  prices: Map<string, WfmPrice>;
+  onOpenPopup: (urlName: string, displayName: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [era, setEra] = useState<"All" | "Lith" | "Meso" | "Neo" | "Axi" | "Requiem">("All");
+  const [sortMode, setSortMode] = useState<"plat" | "az">("plat");
+
+  const relics = useMemo(
+    () => wfmItems.filter(w => /^(Lith|Meso|Neo|Axi|Requiem)\s.+\sRelic$/.test(w.item_name)),
+    [wfmItems],
+  );
+
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let r = relics;
+    if (era !== "All") r = r.filter(w => w.item_name.startsWith(era + " "));
+    if (q) r = r.filter(w => w.item_name.toLowerCase().includes(q));
+    const withPrice = r.map(w => ({ ...w, price: prices.get(w.url_name)?.sell_median }));
+    withPrice.sort((a, b) => sortMode === "plat"
+      ? ((b.price ?? -1) - (a.price ?? -1)) || a.item_name.localeCompare(b.item_name)
+      : a.item_name.localeCompare(b.item_name));
+    return withPrice;
+  }, [relics, era, search, sortMode, prices]);
+
+  // Fetch prices for the relics currently shown.
+  useEffect(() => {
+    const slugs = shown.slice(0, 250).map(r => r.url_name);
+    if (slugs.length) invoke("wfm_queue_prices", { urlNames: slugs }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [era, search, relics.length]);
+
+  const eras = ["All", "Lith", "Meso", "Neo", "Axi", "Requiem"] as const;
+  return (
+    <>
+      <div className="market-header">
+        <input className="foundry-search" style={{ width: 200 }} placeholder="Search relics…"
+          value={search} onChange={e => setSearch(e.target.value)} />
+        <div className="filter-bar" style={{ border: "none", padding: 0, flex: 1, flexWrap: "wrap" }}>
+          {eras.map(e => (
+            <button key={e} className={`fchip ${era === e ? "fchip-on" : ""}`} onClick={() => setEra(e)}>{e}</button>
+          ))}
+          <span className="fbar-sep" />
+          <span className="fbar-label">Sort:</span>
+          <button className={`fchip ${sortMode === "plat" ? "fchip-on" : ""}`} onClick={() => setSortMode("plat")}>Most Plat</button>
+          <button className={`fchip ${sortMode === "az" ? "fchip-on" : ""}`} onClick={() => setSortMode("az")}>A–Z</button>
+          <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--muted)" }}>{shown.length} relics</span>
+        </div>
+      </div>
+      <div className="market-grid">
+        {shown.length === 0 ? (
+          <div className="empty-msg" style={{ gridColumn: "1/-1" }}>
+            {wfmItems.length === 0 ? "Connecting to warframe.market…" : "No relics match."}
+          </div>
+        ) : shown.map(r => (
+          <button key={r.url_name} onClick={() => onOpenPopup(r.url_name, r.item_name)}
+            style={{
+              display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start",
+              padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8,
+              background: "var(--surface)", color: "var(--text)", cursor: "pointer", textAlign: "left",
+            }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{r.item_name.replace(/ Relic$/, "")}</span>
+            <span style={{ fontSize: 13, color: r.price != null ? "#3fb950" : "var(--muted)" }}>
+              {r.price != null ? `${r.price} p` : "—"}
+            </span>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
 
 function ModsTab({ allItems, inventory, wfmLookup, prices, modCopiesMap, onOpenPopup }: {
   allItems: CatalogItem[];
