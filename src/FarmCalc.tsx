@@ -11,6 +11,9 @@ const SQUADS: { label: string; n: number }[] = [
   { label: "1b1", n: 1 }, { label: "2b2", n: 2 }, { label: "4b4", n: 4 },
 ];
 const wfmNorm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+const REFINEMENT_SUFFIXES = ["intact", "exceptional", "flawless", "radiant"];
+
+interface RelicCatItem { unique_name: string; name: string; category: string }
 
 // ── Presets & auto-persist ─────────────────────────────────────────────────
 // The Farm Calc config is serialised to localStorage so it survives navigating
@@ -105,7 +108,31 @@ export default function FarmCalc({ inventory }: Props) {
     setSquadOverrides(s.squadOverrides ?? {});
   };
 
+  // Relic catalog (per-refinement entries like "Meso V13 Radiant") so we can show
+  // how many of each relic you already own, summed across refinements.
+  const [relicCatalog, setRelicCatalog] = useState<Map<string, RelicCatItem>>(new Map());
+
   useEffect(() => { invoke<any>("get_drop_data").then(d => setRelics(parseRelics(d))).catch(() => {}); }, []);
+
+  useEffect(() => {
+    invoke<RelicCatItem[]>("get_all_items").then(items => {
+      const m = new Map<string, RelicCatItem>();
+      for (const i of items) if (i.category === "Relics") m.set(i.name.toLowerCase(), i);
+      setRelicCatalog(m);
+    }).catch(() => {});
+  }, []);
+
+  // Total owned relics of a given "<Tier> <Name>" (e.g. "Meso V13") across all four
+  // refinement tiers, read live from inventory.
+  const ownedRelicCount = (fullName: string): number => {
+    const base = fullName.toLowerCase();
+    let total = 0;
+    for (const ref of REFINEMENT_SUFFIXES) {
+      const cat = relicCatalog.get(`${base} ${ref}`);
+      if (cat) total += inventory[cat.unique_name]?.quantity ?? 0;
+    }
+    return total;
+  };
 
   // Restore the last working state once, before we start auto-persisting.
   useEffect(() => {
@@ -347,15 +374,21 @@ export default function FarmCalc({ inventory }: Props) {
             <div className="wfs-table">
               <div className="wfs-row wfs-head">
                 <span className="wfs-c-name">Relic</span>
+                <span className="wfs-c-num">Have</span>
                 <span className="wfs-c-sel">Refine</span>
                 <span className="wfs-c-sel">Squad</span>
                 <span className="wfs-c-num">Relics</span>
                 <span className="wfs-c-num">Missions</span>
                 <span className="wfs-c-num">Traces</span>
               </div>
-              {plan.relics.map(r => (
+              {plan.relics.map(r => {
+                const have = ownedRelicCount(r.relicName);
+                return (
                 <div className="wfs-row" key={r.relicName}>
                   <span className="wfs-c-name">{r.relicName}</span>
+                  <span className="wfs-c-num" title="Relics you own (all refinements)">
+                    {have > 0 ? have : <span className="wfs-covered">0</span>}
+                  </span>
                   <span className="wfs-c-sel">
                     <select className="wfs-input wfs-mini" value={refineOverrides[r.relicName] ?? r.refinement}
                       onChange={e => setRefineOverrides(p => ({ ...p, [r.relicName]: e.target.value as Refinement }))}>
@@ -372,7 +405,8 @@ export default function FarmCalc({ inventory }: Props) {
                   <span className="wfs-c-num">{r.covered ? "—" : ceil(r.missions)}</span>
                   <span className="wfs-c-num cyan">{r.covered ? "—" : Math.round(r.traces).toLocaleString()}</span>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="wfs-subhead">Parts covered</div>
