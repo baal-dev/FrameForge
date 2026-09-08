@@ -14,6 +14,40 @@ const SQUADS: { label: string; n: number }[] = [
 
 interface CatalogItem { unique_name: string; name: string; ducats?: number | null; image_name?: string }
 
+// ── Presets & auto-persist ─────────────────────────────────────────────────
+// The simulator config is saved to localStorage so it survives leaving the page
+// (LAST_KEY) and can be stored under a name to switch between setups (PRESETS_KEY).
+interface SimState {
+  relicName: string;
+  refinement: Refinement;
+  squad: number;
+  count: string;
+  minutes: string;
+  valueBy: "plat" | "ducats";
+  dumped: string[];
+}
+interface SimPreset extends SimState { name: string }
+
+const PRESETS_KEY = "ff-relicsim-presets";
+const LAST_KEY = "ff-relicsim-last";
+
+function loadPresets(): SimPreset[] {
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function savePresets(list: SimPreset[]) {
+  try { localStorage.setItem(PRESETS_KEY, JSON.stringify(list)); } catch { /* private mode */ }
+}
+function loadLast(): SimState | null {
+  try {
+    const raw = localStorage.getItem(LAST_KEY);
+    return raw ? JSON.parse(raw) as SimState : null;
+  } catch { return null; }
+}
+
 export default function RelicSimulator() {
   const [relics, setRelics] = useState<Relic[]>([]);
   const [prices, setPrices] = useState<Map<string, number>>(new Map());
@@ -28,6 +62,59 @@ export default function RelicSimulator() {
   const [minutes, setMinutes] = useState("3.5");
   const [valueBy, setValueBy] = useState<"plat" | "ducats">("plat");
   const [dumped, setDumped] = useState<Set<string>>(new Set());
+
+  // Preset / persistence state.
+  const [presets, setPresets] = useState<SimPreset[]>(loadPresets);
+  const [presetName, setPresetName] = useState("");
+  const [hydrated, setHydrated] = useState(false);
+
+  const snapshot = (): SimState => ({
+    relicName, refinement, squad, count, minutes, valueBy, dumped: [...dumped],
+  });
+  const applyState = (s: SimState) => {
+    setRelicName(s.relicName ?? "");
+    setQuery(s.relicName ?? "");
+    setRefinement(s.refinement ?? "Radiant");
+    setSquad(s.squad ?? 2);
+    setCount(s.count ?? "250");
+    setMinutes(s.minutes ?? "3.5");
+    setValueBy(s.valueBy ?? "plat");
+    setDumped(new Set(s.dumped ?? []));
+  };
+
+  // Restore the last working state once, before auto-persist starts.
+  useEffect(() => {
+    const last = loadLast();
+    if (last) applyState(last);
+    setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-persist so the setup survives leaving the page.
+  useEffect(() => {
+    if (!hydrated) return;
+    try { localStorage.setItem(LAST_KEY, JSON.stringify(snapshot())); } catch { /* private mode */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, relicName, refinement, squad, count, minutes, valueBy, dumped]);
+
+  const savePreset = () => {
+    const name = presetName.trim();
+    if (!name) return;
+    const entry: SimPreset = { name, ...snapshot() };
+    setPresets(prev => {
+      const next = [...prev.filter(p => p.name !== name), entry].sort((a, b) => a.name.localeCompare(b.name));
+      savePresets(next);
+      return next;
+    });
+  };
+  const loadPreset = (name: string) => {
+    const p = presets.find(x => x.name === name);
+    if (p) { applyState(p); setPresetName(name); }
+  };
+  const deletePreset = (name: string) => {
+    setPresets(prev => { const next = prev.filter(p => p.name !== name); savePresets(next); return next; });
+    setPresetName(cur => (cur === name ? "" : cur));
+  };
 
   useEffect(() => {
     invoke<any>("get_drop_data").then(d => setRelics(parseRelics(d))).catch(() => {});
@@ -83,6 +170,24 @@ export default function RelicSimulator() {
 
   return (
     <div className="wfs">
+      <div className="wfs-presetbar">
+        <span className="wfs-preset-lbl">Preset</span>
+        <select className="wfs-input wfs-preset-sel"
+          value={presets.some(p => p.name === presetName) ? presetName : ""}
+          onChange={e => { if (e.target.value) loadPreset(e.target.value); }}>
+          <option value="">— choose —</option>
+          {presets.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+        </select>
+        <input className="wfs-input wfs-preset-name" placeholder="Name (e.g. Saryn Radshare)"
+          value={presetName} onChange={e => setPresetName(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") savePreset(); }} />
+        <button className="wfs-chip on" onClick={savePreset} disabled={!presetName.trim()}
+          title="Save the current relic + settings under this name (overwrites if it exists)">Save</button>
+        {presets.some(p => p.name === presetName.trim()) && (
+          <button className="wfs-chip" onClick={() => deletePreset(presetName.trim())}
+            title="Delete this preset">Delete</button>
+        )}
+      </div>
       <div className="wfs-controls">
         <label className="wfs-field wfs-grow">
           <span>Relic</span>
