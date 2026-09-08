@@ -73,6 +73,13 @@ select.wfs-input { cursor: pointer; }
 .wfs-setrow-check span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wfs-settarget { width: 58px; flex-shrink: 0; padding: 2px 6px; font-size: 12px; text-align: right; }
 
+/* Farm Calc preset bar */
+.wfs-presetbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wfs-preset-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.wfs-preset-sel { min-width: 150px; }
+.wfs-preset-name { flex: 1 1 200px; min-width: 160px; }
+.wfs-chip:disabled { opacity: .45; cursor: default; }
+
 /* Fix: don't let flex compress the stacked blocks/tables — keep their natural
    height so the scroll container (.wfs / .wfs-main) actually scrolls instead of
    clipping rows when many sets are added. */

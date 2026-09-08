@@ -12,6 +12,47 @@ const SQUADS: { label: string; n: number }[] = [
 ];
 const wfmNorm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 
+// ── Presets & auto-persist ─────────────────────────────────────────────────
+// The Farm Calc config is serialised to localStorage so it survives navigating
+// away (LAST_KEY = the working state) and can be saved under a name to switch
+// between farms — e.g. "Banshee Mirage" vs "Hydroid" (PRESETS_KEY).
+interface FarmState {
+  chosen: string[];
+  targets: Record<string, number>;
+  targetText: string;
+  refinement: Refinement;
+  auto: boolean;
+  squad: number;
+  minutes: string;
+  subtractOwned: boolean;
+  onlyAvailable: boolean;
+  availableText: string;
+  relicOverrides: Record<string, string>;
+  refineOverrides: Record<string, Refinement>;
+  squadOverrides: Record<string, number>;
+}
+interface FarmPreset extends FarmState { name: string }
+
+const PRESETS_KEY = "ff-farmcalc-presets";
+const LAST_KEY = "ff-farmcalc-last";
+
+function loadPresets(): FarmPreset[] {
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function savePresets(list: FarmPreset[]) {
+  try { localStorage.setItem(PRESETS_KEY, JSON.stringify(list)); } catch { /* private mode */ }
+}
+function loadLast(): FarmState | null {
+  try {
+    const raw = localStorage.getItem(LAST_KEY);
+    return raw ? JSON.parse(raw) as FarmState : null;
+  } catch { return null; }
+}
+
 interface Props {
   inventory: Record<string, InventoryItem>;
 }
@@ -36,7 +77,70 @@ export default function FarmCalc({ inventory }: Props) {
 
   const [prices, setPrices] = useState<Map<string, number>>(new Map());
 
+  // Preset / persistence state.
+  const [presets, setPresets] = useState<FarmPreset[]>(loadPresets);
+  const [presetName, setPresetName] = useState("");
+  const [hydrated, setHydrated] = useState(false);
+
+  // Gather the current config into a serialisable snapshot.
+  const snapshot = (): FarmState => ({
+    chosen: [...chosen], targets, targetText, refinement, auto, squad, minutes,
+    subtractOwned, onlyAvailable, availableText,
+    relicOverrides, refineOverrides, squadOverrides,
+  });
+  // Apply a saved snapshot back onto the live state.
+  const applyState = (s: FarmState) => {
+    setChosen(new Set(s.chosen ?? []));
+    setTargets(s.targets ?? {});
+    setTargetText(s.targetText ?? "100");
+    setRefinement(s.refinement ?? "Radiant");
+    setAuto(s.auto ?? true);
+    setSquad(s.squad ?? 4);
+    setMinutes(s.minutes ?? "3.5");
+    setSubtractOwned(s.subtractOwned ?? true);
+    setOnlyAvailable(s.onlyAvailable ?? false);
+    setAvailableText(s.availableText ?? "");
+    setRelicOverrides(s.relicOverrides ?? {});
+    setRefineOverrides(s.refineOverrides ?? {});
+    setSquadOverrides(s.squadOverrides ?? {});
+  };
+
   useEffect(() => { invoke<any>("get_drop_data").then(d => setRelics(parseRelics(d))).catch(() => {}); }, []);
+
+  // Restore the last working state once, before we start auto-persisting.
+  useEffect(() => {
+    const last = loadLast();
+    if (last) applyState(last);
+    setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-persist the working state so it survives leaving the page.
+  useEffect(() => {
+    if (!hydrated) return;
+    try { localStorage.setItem(LAST_KEY, JSON.stringify(snapshot())); } catch { /* private mode */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, chosen, targets, targetText, refinement, auto, squad, minutes,
+      subtractOwned, onlyAvailable, availableText, relicOverrides, refineOverrides, squadOverrides]);
+
+  const savePreset = () => {
+    const name = presetName.trim();
+    if (!name) return;
+    const entry: FarmPreset = { name, ...snapshot() };
+    setPresets(prev => {
+      const next = [...prev.filter(p => p.name !== name), entry].sort((a, b) => a.name.localeCompare(b.name));
+      savePresets(next);
+      return next;
+    });
+  };
+  const loadPreset = (name: string) => {
+    const p = presets.find(x => x.name === name);
+    if (p) { applyState(p); setPresetName(name); }
+  };
+  const deletePreset = (name: string) => {
+    setPresets(prev => { const next = prev.filter(p => p.name !== name); savePresets(next); return next; });
+    setPresetName(cur => (cur === name ? "" : cur));
+  };
 
   // warframe.market prices keyed by normalized name (for "<Set> Set" plat value).
   useEffect(() => {
@@ -144,6 +248,24 @@ export default function FarmCalc({ inventory }: Props) {
       </div>
 
       <div className="wfs-main">
+        <div className="wfs-presetbar">
+          <span className="wfs-preset-lbl">Preset</span>
+          <select className="wfs-input wfs-preset-sel"
+            value={presets.some(p => p.name === presetName) ? presetName : ""}
+            onChange={e => { if (e.target.value) loadPreset(e.target.value); }}>
+            <option value="">— choose —</option>
+            {presets.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+          </select>
+          <input className="wfs-input wfs-preset-name" placeholder="Name (e.g. Banshee Mirage)"
+            value={presetName} onChange={e => setPresetName(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") savePreset(); }} />
+          <button className="wfs-chip on" onClick={savePreset} disabled={!presetName.trim()}
+            title="Save the current selection under this name (overwrites if it exists)">Save</button>
+          {presets.some(p => p.name === presetName.trim()) && (
+            <button className="wfs-chip" onClick={() => deletePreset(presetName.trim())}
+              title="Delete this preset">Delete</button>
+          )}
+        </div>
         <div className="wfs-controls">
           <label className="wfs-field"><span>Default per set</span>
             <input className="wfs-input wfs-narrow" value={targetText} onChange={e => setTargetText(e.target.value)}
